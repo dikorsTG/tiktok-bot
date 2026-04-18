@@ -4,7 +4,8 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 # токен
-TOKEN = "8738791326:AAFgYaGyeVE3fwl-Ttox67VEU7WTW3BNKfg"
+import os
+TOKEN = os.getenv("8738791326:AAFgYaGyeVE3fwl-Ttox67VEU7WTW3BNKfg")
 
 def is_tiktok(url):
     return "tiktok.com" in url
