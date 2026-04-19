@@ -7,7 +7,7 @@ from telegram import Bot, Update
 TOKEN = os.getenv("TOKEN")
 bot = Bot(token=TOKEN)
 
-app = Flask(name)
+app = Flask(__name__)
 
 # --- логика ---
 def is_tiktok(url):
