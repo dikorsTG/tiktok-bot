@@ -1,12 +1,15 @@
 import os
 import requests
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from flask import Flask, request
+from telegram import Bot, Update
 
-# токен
-import os
+# 👇 токен теперь из переменной окружения
 TOKEN = os.getenv("TOKEN")
+bot = Bot(token=TOKEN)
 
+app = Flask(name)
+
+# --- логика ---
 def is_tiktok(url):
     return "tiktok.com" in url
 
@@ -22,40 +25,58 @@ def download_video(url):
     except:
         return None
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Отправь TikTok ссылку 📥")
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+# --- команды ---
+def start(chat_id):
+    bot.send_message(chat_id, "👋 Отправь TikTok ссылку 📥")
+
+def help_cmd(chat_id):
+    bot.send_message(chat_id,
         "📌 Как пользоваться ботом:\n\n"
         "1. Отправь ссылку на TikTok\n"
         "2. Бот скачает видео\n"
-        "3. И пришлёт его тебе 📥\n\n"
-        "Команды:\n"
+        "3. И пришлёт тебе 📥\n\n"
         "/start - запуск\n"
         "/help - помощь"
     )
 
-async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text
 
-    if is_tiktok(text):
-        await update.message.reply_text("⏳ Скачиваю...")
+# --- webhook ---
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot)
 
-        video = download_video(text)
+    if update.message:
+        chat_id = update.message.chat.id
+        text = update.message.text or ""
 
-        if video:
-            await update.message.reply_video(video)
+        if text == "/start":
+            start(chat_id)
+
+        elif text == "/help":
+            help_cmd(chat_id)
+
         else:
-            await update.message.reply_text("❌ Не удалось скачать видео")
-    else:
-        await update.message.reply_text("📌 Это не TikTok ссылка")
+            if is_tiktok(text):
+                bot.send_message(chat_id, "⏳ Скачиваю...")
 
-app = ApplicationBuilder().token(TOKEN).build()
+                video = download_video(text)
 
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("help", help_command))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
+                if video:
+                    bot.send_video(chat_id, video)
+                else:
+                    bot.send_message(chat_id, "❌ Не удалось скачать видео")
+            else:
+                bot.send_message(chat_id, "📌 Это не TikTok ссылка")
 
-print("🤖 Бот запущен...")
-app.run_polling()
+    return "ok"
+
+
+@app.route("/")
+def home():
+    return "🤖 TikTokSaver bot is running"
+
+
+# --- запуск ---
+if name == "main":
+    app.run(host="0.0.0.0", port=5000)
