@@ -3,7 +3,7 @@ import requests
 from flask import Flask, request
 from telegram import Bot, Update
 
-# 👇 токен теперь из переменной окружения
+# токен из переменной окружения
 TOKEN = os.getenv("TOKEN")
 bot = Bot(token=TOKEN)
 
@@ -78,5 +78,6 @@ def home():
 
 
 # --- запуск ---
-if name == "main":
-    app.run(host="0.0.0.0", port=5000)
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
