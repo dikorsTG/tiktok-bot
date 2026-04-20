@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from flask import Flask, request
 from telegram import Bot, Update
@@ -18,20 +19,6 @@ bot = Bot(token=TOKEN)
 app = Flask(__name__)
 
 WEBHOOK_URL = "https://tiktok-bot-1-3atx.onrender.com/webhook"
-
-
-# --- 🔥 УСТАНОВКА WEBHOOK ПРИ СТАРТЕ ---
-def setup_webhook():
-    try:
-        print("SETTING WEBHOOK...")
-        bot.delete_webhook()
-        bot.set_webhook(url=WEBHOOK_URL)
-        print("WEBHOOK SET:", WEBHOOK_URL)
-    except Exception as e:
-        print("WEBHOOK ERROR:", e)
-
-
-setup_webhook()
 
 
 # --- TikTok логика ---
@@ -65,7 +52,7 @@ def help_cmd(chat_id):
     )
 
 
-# --- webhook ---
+# --- webhook handler ---
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
@@ -112,8 +99,26 @@ def home():
     return "🤖 TikTok bot is running"
 
 
-# --- запуск ---
+# --- 🔥 СТАБИЛЬНЫЙ START ---
+def setup_webhook():
+    try:
+        print("SETTING WEBHOOK...")
+        bot.delete_webhook()
+        time.sleep(1)
+        bot.set_webhook(url=WEBHOOK_URL)
+        print("WEBHOOK SET:", WEBHOOK_URL)
+    except Exception as e:
+        print("WEBHOOK ERROR:", e)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+
     print("RUNNING ON PORT:", port)
+
+    # 🔥 важно: даём Flask подняться
+    time.sleep(2)
+
+    setup_webhook()
+
     app.run(host="0.0.0.0", port=port)
