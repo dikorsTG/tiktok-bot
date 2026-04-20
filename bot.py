@@ -12,10 +12,10 @@ if not TOKEN:
 
 API = f"https://api.telegram.org/bot{TOKEN}"
 
-app = Flask(name)
+app = Flask(__name__)  # ✅ исправлено
 
 WEBHOOK_URL = "https://tiktok-bot-1-3atx.onrender.com/webhook"
-SECRET = "my_super_secret_123"  # 🔐 придумай любой
+SECRET = "my_super_secret_123"
 
 
 # --- Telegram helpers ---
@@ -30,6 +30,20 @@ def send_video(chat_id, url):
     requests.post(API + "/sendVideo", json={
         "chat_id": chat_id,
         "video": url
+    })
+
+
+def send_video_note(chat_id, file_id):
+    # получаем файл от Telegram
+    r = requests.get(f"{API}/getFile?file_id={file_id}").json()
+    file_path = r["result"]["file_path"]
+
+    file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
+
+    # отправляем как кружок
+    requests.post(API + "/sendVideoNote", json={
+        "chat_id": chat_id,
+        "video_note": file_url
     })
 
 
@@ -56,10 +70,8 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    # 🔐 проверка что это Telegram
-    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-    if secret != SECRET:
-        print("❌ NOT TELEGRAM")
+    # 🔐 защита
+    if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != SECRET:
         return "forbidden", 403
 
     data = request.get_json()
@@ -69,6 +81,16 @@ def webhook():
 
     message = data["message"]
     chat_id = message["chat"]["id"]
+
+    # --- 🎥 если пришёл кружок ---
+    if "video_note" in message:
+        file_id = message["video_note"]["file_id"]
+
+        send_message(chat_id, "🔄 Пересылаю кружок...")
+        send_video_note(chat_id, file_id)
+
+        return "ok"
+
     text = message.get("text")
 
     if not text:
@@ -80,10 +102,15 @@ def webhook():
         send_message(chat_id, "👋 Бот работает! Отправь TikTok ссылку 📥")
 
     elif text == "/help":
-        send_message(chat_id, "📌 Просто отправь TikTok ссылку")
+        send_message(chat_id,
+            "🤖 Что умеет бот:\n\n"
+            "📥 TikTok — скачивает видео\n"
+            "🎥 Кружки — пересылает кружок\n\n"
+            "📌 Просто отправь ссылку или кружок"
+        )
 
     elif is_tiktok(text):
-        send_message(chat_id, "⏳ Скачиваю...")
+        send_message(chat_id, "⏳ Скачиваю TikTok...")
 
         video = download_video(text)
 
@@ -91,9 +118,6 @@ def webhook():
             send_video(chat_id, video)
         else:
             send_message(chat_id, "❌ Не удалось скачать видео")
-
-    else:
-        return "ok"   # ❗ убрали спам
 
     return "ok"
 
@@ -111,7 +135,8 @@ def set_webhook():
         print("WEBHOOK ERROR:", e)
 
 
-if name == "main":
+# --- запуск ---
+if __name__ == "__main__":  # ✅ исправлено
     import time
 
     time.sleep(2)
