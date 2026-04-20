@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from flask import Flask, request
 from telegram import Bot, Update
@@ -12,6 +13,18 @@ if not TOKEN:
     print("❌ TOKEN is missing!")
 
 bot = Bot(token=TOKEN)
+
+# --- 🔥 УСТАНОВКА WEBHOOK ---
+WEBHOOK_URL = "https://tiktok-bot-1-3atx.onrender.com/webhook"
+
+try:
+    print("SETTING WEBHOOK...")
+    bot.delete_webhook()
+    time.sleep(1)
+    bot.set_webhook(url=WEBHOOK_URL)
+    print("WEBHOOK SET:", WEBHOOK_URL)
+except Exception as e:
+    print("WEBHOOK ERROR:", e)
 
 app = Flask(__name__)
 
@@ -50,7 +63,7 @@ def help_cmd(chat_id):
     )
 
 
-# --- webhook (СТАБИЛЬНЫЙ) ---
+# --- webhook ---
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
