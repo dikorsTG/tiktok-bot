@@ -7,26 +7,31 @@ from telegram import Bot, Update
 TOKEN = os.getenv("TOKEN")
 
 print("BOT STARTING...")
-print("TOKEN:", TOKEN)
 
+# --- ❗ ЖЁСТКАЯ ПРОВЕРКА TOKEN ---
 if not TOKEN:
-    print("❌ TOKEN is missing!")
+    print("❌ TOKEN is missing")
+    exit()
+
+print("TOKEN OK")
 
 bot = Bot(token=TOKEN)
 
-# --- 🔥 УСТАНОВКА WEBHOOK ---
+app = Flask(__name__)
+
+# --- 🔥 WEBHOOK ---
 WEBHOOK_URL = "https://tiktok-bot-1-3atx.onrender.com/webhook"
 
-try:
-    print("SETTING WEBHOOK...")
-    bot.delete_webhook()
-    time.sleep(1)
-    bot.set_webhook(url=WEBHOOK_URL)
-    print("WEBHOOK SET:", WEBHOOK_URL)
-except Exception as e:
-    print("WEBHOOK ERROR:", e)
-
-app = Flask(__name__)
+@app.before_first_request
+def setup_webhook():
+    try:
+        print("SETTING WEBHOOK...")
+        bot.delete_webhook()
+        time.sleep(1)
+        bot.set_webhook(url=WEBHOOK_URL)
+        print("WEBHOOK SET:", WEBHOOK_URL)
+    except Exception as e:
+        print("WEBHOOK ERROR:", e)
 
 
 # --- TikTok логика ---
