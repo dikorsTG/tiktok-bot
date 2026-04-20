@@ -1,8 +1,6 @@
 import os
-import time
 import requests
 from flask import Flask, request
-from telegram import Bot, Update
 
 TOKEN = os.getenv("TOKEN")
 
@@ -12,16 +10,29 @@ if not TOKEN:
     print("❌ TOKEN is missing")
     exit()
 
-print("TOKEN OK")
-
-bot = Bot(token=TOKEN)
+API = f"https://api.telegram.org/bot{TOKEN}"
 
 app = Flask(__name__)
 
 WEBHOOK_URL = "https://tiktok-bot-1-3atx.onrender.com/webhook"
 
 
-# --- TikTok логика ---
+# --- Telegram helpers ---
+def send_message(chat_id, text):
+    requests.post(API + "/sendMessage", json={
+        "chat_id": chat_id,
+        "text": text
+    })
+
+
+def send_video(chat_id, url):
+    requests.post(API + "/sendVideo", json={
+        "chat_id": chat_id,
+        "video": url
+    })
+
+
+# --- TikTok ---
 def is_tiktok(url):
     return "tiktok.com" in url
 
@@ -36,89 +47,64 @@ def download_video(url):
         return None
 
 
-# --- команды ---
-def start(chat_id):
-    bot.send_message(chat_id, "👋 Бот работает! Отправь TikTok ссылку 📥")
-
-
-def help_cmd(chat_id):
-    bot.send_message(
-        chat_id,
-        "📌 Как пользоваться:\n\n"
-        "1. Отправь TikTok ссылку\n"
-        "2. Получишь видео\n\n"
-        "/start - запуск\n"
-        "/help - помощь"
-    )
-
-
-# --- webhook handler ---
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    try:
-        data = request.get_json(force=True)
-        update = Update.de_json(data, bot)
-
-        if not update or not update.message:
-            return "ok"
-
-        chat_id = update.message.chat.id
-        text = update.message.text or ""
-
-        print("MESSAGE:", text)
-
-        if text == "/start":
-            start(chat_id)
-
-        elif text == "/help":
-            help_cmd(chat_id)
-
-        elif is_tiktok(text):
-            bot.send_message(chat_id, "⏳ Скачиваю...")
-
-            video = download_video(text)
-
-            if video:
-                bot.send_video(chat_id, video)
-            else:
-                bot.send_message(chat_id, "❌ Не удалось скачать видео")
-
-        else:
-            bot.send_message(chat_id, "📌 Отправь TikTok ссылку")
-
-        return "ok"
-
-    except Exception as e:
-        print("WEBHOOK ERROR:", e)
-        return "error"
-
-
-# --- health check ---
+# --- routes ---
 @app.route("/")
 def home():
     return "🤖 TikTok bot is running"
 
 
-# --- 🔥 СТАБИЛЬНЫЙ START ---
-def setup_webhook():
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.get_json()
+
+    print("UPDATE:", data)
+
+    message = data.get("message")
+    if not message:
+        return "ok"
+
+    chat_id = message["chat"]["id"]
+    text = message.get("text", "")
+
+    if text == "/start":
+        send_message(chat_id, "👋 Бот работает! Отправь TikTok ссылку 📥")
+
+    elif text == "/help":
+        send_message(chat_id, "📌 Просто отправь TikTok ссылку")
+
+    elif is_tiktok(text):
+        send_message(chat_id, "⏳ Скачиваю...")
+
+        video = download_video(text)
+
+        if video:
+            send_video(chat_id, video)
+        else:
+            send_message(chat_id, "❌ Не удалось скачать видео")
+
+    else:
+        send_message(chat_id, "📌 Отправь TikTok ссылку")
+
+    return "ok"
+
+
+# --- start webhook ---
+def set_webhook():
     try:
         print("SETTING WEBHOOK...")
-        bot.delete_webhook()
-        time.sleep(1)
-        bot.set_webhook(url=WEBHOOK_URL)
-        print("WEBHOOK SET:", WEBHOOK_URL)
+        requests.get(f"{API}/deleteWebhook?drop_pending_updates=true")
+        requests.get(f"{API}/setWebhook?url={WEBHOOK_URL}")
+        print("WEBHOOK SET")
     except Exception as e:
         print("WEBHOOK ERROR:", e)
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    import time
 
-    print("RUNNING ON PORT:", port)
-
-    # 🔥 важно: даём Flask подняться
     time.sleep(2)
 
-    setup_webhook()
+    set_webhook()
 
+    port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
