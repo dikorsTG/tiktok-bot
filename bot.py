@@ -18,8 +18,8 @@ app = Flask(__name__)
 WEBHOOK_URL = "https://tiktok-bot-1-3atx.onrender.com/webhook"
 SECRET = "my_super_secret_123"
 
+# ---------------- HELPERS ----------------
 
-# --- helpers ---
 def send_message(chat_id, text):
     requests.post(API + "/sendMessage", json={
         "chat_id": chat_id,
@@ -34,7 +34,17 @@ def send_video(chat_id, url):
     })
 
 
-# --- URL checks ---
+def send_photos(chat_id, images):
+    media = [{"type": "photo", "media": img} for img in images[:10]]
+
+    requests.post(API + "/sendMediaGroup", json={
+        "chat_id": chat_id,
+        "media": media
+    })
+
+
+# ---------------- CHECKS ----------------
+
 def is_tiktok(url):
     return "tiktok.com" in url
 
@@ -43,30 +53,40 @@ def is_youtube(url):
     return "youtube.com" in url or "youtu.be" in url
 
 
-# --- TikTok ---
+# ---------------- TIKTOK ----------------
+
 def download_tiktok(url):
     try:
         api = f"https://tikwm.com/api/?url={url}"
         r = requests.get(api, timeout=10).json()
-        return r.get("data", {}).get("play")
-    except:
+
+        data = r.get("data", {})
+
+        if data.get("play"):
+            return {"type": "video", "url": data["play"]}
+
+        if data.get("images"):
+            return {"type": "images", "urls": data["images"]}
+
+        return None
+
+    except Exception as e:
+        print("TIKTOK ERROR:", e)
         return None
 
 
-# --- YouTube ---
+# ---------------- YOUTUBE ----------------
+
 def download_youtube(url):
     try:
-        ydl_opts = {
-            "format": "best",
-            "quiet": True
-        }
+        ydl_opts = {"format": "best", "quiet": True}
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-            duration = info.get("duration", 0)  # в секундах
+            duration = info.get("duration", 0)
 
-            # ⛔ лимит 10 минут (600 сек)
+            # ⛔ лимит 10 минут
             if duration > 600:
                 return "PRO_ONLY"
 
@@ -77,7 +97,8 @@ def download_youtube(url):
         return None
 
 
-# --- convert video note → video ---
+# ---------------- VIDEO NOTE ----------------
+
 def convert_video_note(chat_id, file_id):
     r = requests.get(f"{API}/getFile?file_id={file_id}").json()
     file_path = r["result"]["file_path"]
@@ -87,7 +108,8 @@ def convert_video_note(chat_id, file_id):
     send_video(chat_id, file_url)
 
 
-# --- routes ---
+# ---------------- ROUTES ----------------
+
 @app.route("/")
 def home():
     return "🤖 Bot is running"
@@ -100,7 +122,6 @@ def webhook():
         return "forbidden", 403
 
     data = request.get_json()
-
     if not data or "message" not in data:
         return "ok"
 
@@ -110,47 +131,55 @@ def webhook():
     # 🎬 кружок
     if "video_note" in msg:
         file_id = msg["video_note"]["file_id"]
-        send_message(chat_id, "🎬 Конвертирую кружок в видео...")
+        send_message(chat_id, "🎬 Конвертирую кружок...")
         convert_video_note(chat_id, file_id)
         return "ok"
 
     text = msg.get("text")
-
     if not text:
         return "ok"
 
-    # --- commands ---
+    print("CHAT:", chat_id, "TEXT:", text)
+
+    # ---------------- COMMANDS ----------------
+
     if text == "/start":
         send_message(chat_id, "👋 Отправь TikTok или YouTube ссылку")
 
     elif text == "/help":
         send_message(chat_id,
             "🤖 Бот умеет:\n\n"
-            "📥 TikTok скачивание\n"
-            "📺 YouTube скачивание\n"
-            "🎬 кружки → видео\n\n"
-            "⚡ лимит: 10 минут (PRO)"
+            "📥 TikTok (видео + фото)\n"
+            "📺 YouTube (до 10 минут)\n"
+            "🎬 кружки → видео\n"
         )
 
-    # --- TikTok ---
+    # ---------------- TIKTOK ----------------
+
     elif is_tiktok(text):
         send_message(chat_id, "⏳ TikTok загрузка...")
 
-        video = download_tiktok(text)
+        result = download_tiktok(text)
 
-        if video:
-            send_video(chat_id, video)
-        else:
+        if not result:
             send_message(chat_id, "❌ Ошибка TikTok")
 
-    # --- YouTube ---
+        elif result["type"] == "video":
+            send_video(chat_id, result["url"])
+
+        elif result["type"] == "images":
+            send_message(chat_id, "🖼 Отправляю фото...")
+            send_photos(chat_id, result["urls"])
+
+    # ---------------- YOUTUBE ----------------
+
     elif is_youtube(text):
         send_message(chat_id, "⏳ YouTube загрузка...")
 
         video = download_youtube(text)
 
         if video == "PRO_ONLY":
-            send_message(chat_id, "🚫 Видео длиннее 10 минут — доступ только PRO")
+            send_message(chat_id, "🚫 Видео длиннее 10 минут — только PRO")
         elif video:
             send_video(chat_id, video)
         else:
@@ -159,13 +188,16 @@ def webhook():
     return "ok"
 
 
-# --- webhook setup ---
+# ---------------- WEBHOOK ----------------
+
 def set_webhook():
     print("SETTING WEBHOOK...")
     requests.get(f"{API}/deleteWebhook?drop_pending_updates=true")
     requests.get(f"{API}/setWebhook?url={WEBHOOK_URL}&secret_token={SECRET}")
     print("WEBHOOK SET")
 
+
+# ---------------- START ----------------
 
 if __name__ == "__main__":
     import time
