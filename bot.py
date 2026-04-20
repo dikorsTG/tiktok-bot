@@ -1,5 +1,4 @@
 import os
-import time
 import requests
 from flask import Flask, request
 from telegram import Bot, Update
@@ -8,7 +7,6 @@ TOKEN = os.getenv("TOKEN")
 
 print("BOT STARTING...")
 
-# --- ❗ ЖЁСТКАЯ ПРОВЕРКА TOKEN ---
 if not TOKEN:
     print("❌ TOKEN is missing")
     exit()
@@ -19,19 +17,21 @@ bot = Bot(token=TOKEN)
 
 app = Flask(__name__)
 
-# --- 🔥 WEBHOOK ---
 WEBHOOK_URL = "https://tiktok-bot-1-3atx.onrender.com/webhook"
 
-@app.before_first_request
+
+# --- 🔥 УСТАНОВКА WEBHOOK ПРИ СТАРТЕ ---
 def setup_webhook():
     try:
         print("SETTING WEBHOOK...")
         bot.delete_webhook()
-        time.sleep(1)
         bot.set_webhook(url=WEBHOOK_URL)
         print("WEBHOOK SET:", WEBHOOK_URL)
     except Exception as e:
         print("WEBHOOK ERROR:", e)
+
+
+setup_webhook()
 
 
 # --- TikTok логика ---
@@ -43,11 +43,7 @@ def download_video(url):
     try:
         api = f"https://tikwm.com/api/?url={url}"
         r = requests.get(api, timeout=10).json()
-
-        if r.get("data") and r["data"].get("play"):
-            return r["data"]["play"]
-
-        return None
+        return r.get("data", {}).get("play")
     except Exception as e:
         print("DOWNLOAD ERROR:", e)
         return None
@@ -59,7 +55,8 @@ def start(chat_id):
 
 
 def help_cmd(chat_id):
-    bot.send_message(chat_id,
+    bot.send_message(
+        chat_id,
         "📌 Как пользоваться:\n\n"
         "1. Отправь TikTok ссылку\n"
         "2. Получишь видео\n\n"
@@ -112,7 +109,7 @@ def webhook():
 # --- health check ---
 @app.route("/")
 def home():
-    return "🤖 TikTokSaver bot is running"
+    return "🤖 TikTok bot is running"
 
 
 # --- запуск ---
