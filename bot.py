@@ -12,9 +12,10 @@ if not TOKEN:
 
 API = f"https://api.telegram.org/bot{TOKEN}"
 
-app = Flask(__name__)
+app = Flask(name)
 
 WEBHOOK_URL = "https://tiktok-bot-1-3atx.onrender.com/webhook"
+SECRET = "my_super_secret_123"  # 🔐 придумай любой
 
 
 # --- Telegram helpers ---
@@ -55,16 +56,25 @@ def home():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    # 🔐 проверка что это Telegram
+    secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
+    if secret != SECRET:
+        print("❌ NOT TELEGRAM")
+        return "forbidden", 403
+
     data = request.get_json()
 
-    print("UPDATE:", data)
-
-    message = data.get("message")
-    if not message:
+    if not data or "message" not in data:
         return "ok"
 
+    message = data["message"]
     chat_id = message["chat"]["id"]
-    text = message.get("text", "")
+    text = message.get("text")
+
+    if not text:
+        return "ok"
+
+    print("CHAT:", chat_id, "TEXT:", text)
 
     if text == "/start":
         send_message(chat_id, "👋 Бот работает! Отправь TikTok ссылку 📥")
@@ -83,23 +93,25 @@ def webhook():
             send_message(chat_id, "❌ Не удалось скачать видео")
 
     else:
-        send_message(chat_id, "📌 Отправь TikTok ссылку")
+        return "ok"   # ❗ убрали спам
 
     return "ok"
 
 
-# --- start webhook ---
+# --- webhook setup ---
 def set_webhook():
     try:
         print("SETTING WEBHOOK...")
         requests.get(f"{API}/deleteWebhook?drop_pending_updates=true")
-        requests.get(f"{API}/setWebhook?url={WEBHOOK_URL}")
+        requests.get(
+            f"{API}/setWebhook?url={WEBHOOK_URL}&secret_token={SECRET}"
+        )
         print("WEBHOOK SET")
     except Exception as e:
         print("WEBHOOK ERROR:", e)
 
 
-if __name__ == "__main__":
+if name == "main":
     import time
 
     time.sleep(2)
