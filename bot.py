@@ -16,7 +16,7 @@ API = f"https://api.telegram.org/bot{TOKEN}"
 app = Flask(__name__)
 
 WEBHOOK_URL = "https://tiktok-bot-1-3atx.onrender.com/webhook"
-SECRET = "my_super_secret_123"
+SECRET = "1234"  # ✅ теперь используем
 
 # ---------------- HELPERS ----------------
 
@@ -79,18 +79,24 @@ def download_tiktok(url):
 
 def download_youtube(url):
     try:
-        ydl_opts = {"format": "best", "quiet": True}
+        ydl_opts = {
+            "format": "mp4[height<=720]/best",
+            "quiet": True
+        }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
             duration = info.get("duration", 0)
 
-            # ⛔ лимит 10 минут
             if duration > 600:
                 return "PRO_ONLY"
 
-            return info.get("url")
+            for f in info["formats"][::-1]:
+                if f.get("ext") == "mp4" and f.get("url"):
+                    return f["url"]
+
+            return None
 
     except Exception as e:
         print("YT ERROR:", e)
@@ -118,17 +124,21 @@ def home():
 @app.route("/webhook", methods=["POST"])
 def webhook():
 
+    # ✅ ПРОВЕРКА SECRET (теперь работает)
     if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != SECRET:
+        print("❌ WRONG SECRET")
         return "forbidden", 403
 
     data = request.get_json()
+    print("INCOMING:", data)
+
     if not data or "message" not in data:
         return "ok"
 
     msg = data["message"]
     chat_id = msg["chat"]["id"]
 
-    # 🎬 кружок
+    # 🎬 кружок → видео
     if "video_note" in msg:
         file_id = msg["video_note"]["file_id"]
         send_message(chat_id, "🎬 Конвертирую кружок...")
@@ -138,8 +148,6 @@ def webhook():
     text = msg.get("text")
     if not text:
         return "ok"
-
-    print("CHAT:", chat_id, "TEXT:", text)
 
     # ---------------- COMMANDS ----------------
 
@@ -193,7 +201,9 @@ def webhook():
 def set_webhook():
     print("SETTING WEBHOOK...")
     requests.get(f"{API}/deleteWebhook?drop_pending_updates=true")
-    requests.get(f"{API}/setWebhook?url={WEBHOOK_URL}&secret_token={SECRET}")
+    requests.get(
+        f"{API}/setWebhook?url={WEBHOOK_URL}&secret_token={SECRET}"
+    )
     print("WEBHOOK SET")
 
 
