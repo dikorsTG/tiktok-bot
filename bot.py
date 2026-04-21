@@ -9,6 +9,9 @@ app = Flask(__name__)
 
 WEBHOOK_URL = "https://tiktok-bot-1-3atx.onrender.com/webhook"
 
+# 🔥 имя твоего бота
+BOT_USERNAME = "TiktokSaverbot_bot"
+
 
 # ---------------- SEND ----------------
 
@@ -33,12 +36,10 @@ def send_audio(chat_id, url):
     })
 
 
-# 🔥 ИСПРАВЛЕННЫЕ ФОТО (АЛЬБОМ)
 def send_photos(chat_id, images):
     if not images:
         return
 
-    # если одно фото → просто фото
     if len(images) == 1:
         requests.post(API + "/sendPhoto", json={
             "chat_id": chat_id,
@@ -46,7 +47,6 @@ def send_photos(chat_id, images):
         })
         return
 
-    # если несколько → альбом
     media = [{"type": "photo", "media": img} for img in images[:10]]
 
     requests.post(API + "/sendMediaGroup", json={
@@ -90,6 +90,23 @@ def get_youtube_link(url):
     return url
 
 
+# ---------------- CLEAN COMMAND ----------------
+
+def clean_command(text):
+    if not text:
+        return ""
+
+    if "@" in text:
+        cmd, bot = text.split("@", 1)
+
+        if bot.lower() != BOT_USERNAME.lower():
+            return ""
+
+        return cmd
+
+    return text
+
+
 # ---------------- WEBHOOK ----------------
 
 @app.route("/")
@@ -120,12 +137,19 @@ def webhook():
         send_video(chat_id, url)
         return "ok"
 
+    # ---------------- COMMAND FIX ----------------
+
+    cmd = clean_command(text)
+
+    if not cmd:
+        return "ok"
+
     # ---------------- COMMANDS ----------------
 
-    if text == "/start":
+    if cmd == "/start":
         send_message(chat_id, "👋 Отправь TikTok или YouTube ссылку")
 
-    elif text == "/help":
+    elif cmd == "/help":
         send_message(chat_id,
             "🤖 Бот умеет:\n\n"
             "📥 TikTok (видео / фото / звук)\n"
@@ -135,9 +159,9 @@ def webhook():
 
     # ---------------- TIKTOK ----------------
 
-    elif is_tiktok(text):
+    elif is_tiktok(cmd):
 
-        result = download_tiktok(text)
+        result = download_tiktok(cmd)
 
         if not result:
             send_message(chat_id, "❌ Ошибка TikTok")
@@ -157,8 +181,8 @@ def webhook():
 
     # ---------------- YOUTUBE ----------------
 
-    elif is_youtube(text):
-        send_message(chat_id, get_youtube_link(text))
+    elif is_youtube(cmd):
+        send_message(chat_id, get_youtube_link(cmd))
 
     return "ok"
 
