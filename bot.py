@@ -22,17 +22,14 @@ def send_message(chat_id, text):
 
 
 def send_video(chat_id, file):
-    if isinstance(file, str) and file.startswith("http"):
-        requests.post(API + "/sendVideo", json={
-            "chat_id": chat_id,
-            "video": file
-        })
-    else:
+    try:
         with open(file, "rb") as f:
             requests.post(API + "/sendVideo",
                 data={"chat_id": chat_id},
                 files={"video": f}
             )
+    except Exception as e:
+        print("SEND VIDEO ERROR:", e)
 
 
 def send_photos(chat_id, images):
@@ -72,7 +69,7 @@ def download_tiktok(url):
         return None
 
 
-# ---------------- YOUTUBE (ФАЙЛ) ----------------
+# ---------------- YOUTUBE (FIXED) ----------------
 
 def download_youtube(url):
     try:
@@ -80,9 +77,10 @@ def download_youtube(url):
         output = os.path.join(temp_dir, "video.mp4")
 
         ydl_opts = {
-            "format": "mp4[height<=720]/best",
+            "format": "best[ext=mp4]/best",
             "outtmpl": output,
-            "quiet": True
+            "quiet": True,
+            "noplaylist": True
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -91,7 +89,10 @@ def download_youtube(url):
             if info.get("duration", 0) > 600:
                 return "PRO"
 
-        return output
+        if os.path.exists(output) and os.path.getsize(output) > 0:
+            return output
+
+        return None
 
     except Exception as e:
         print("YT ERROR:", e)
@@ -123,10 +124,9 @@ def webhook():
 
     elif text == "/help":
         send_message(chat_id,
-            "🤖 Бот:\n\n"
+            "🤖 Бот умеет:\n\n"
             "📥 TikTok (видео + фото)\n"
-            "📺 YouTube (до 10 мин)\n"
-            "🎬 кружки → видео"
+            "📺 YouTube (до 10 минут)\n"
         )
 
     # ---------------- TIKTOK ----------------
