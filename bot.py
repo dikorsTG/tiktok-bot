@@ -33,8 +33,22 @@ def send_audio(chat_id, url):
     })
 
 
+# 🔥 ИСПРАВЛЕННЫЕ ФОТО (АЛЬБОМ)
 def send_photos(chat_id, images):
+    if not images:
+        return
+
+    # если одно фото → просто фото
+    if len(images) == 1:
+        requests.post(API + "/sendPhoto", json={
+            "chat_id": chat_id,
+            "photo": images[0]
+        })
+        return
+
+    # если несколько → альбом
     media = [{"type": "photo", "media": img} for img in images[:10]]
+
     requests.post(API + "/sendMediaGroup", json={
         "chat_id": chat_id,
         "media": media
@@ -73,7 +87,7 @@ def download_tiktok(url):
 # ---------------- YOUTUBE ----------------
 
 def get_youtube_link(url):
-    return url  # стабильный вариант
+    return url
 
 
 # ---------------- WEBHOOK ----------------
@@ -97,8 +111,6 @@ def webhook():
     # ---------------- KRUZHKI ----------------
 
     if "video_note" in msg:
-        send_message(chat_id, "🎬 Кружок получен")
-
         file_id = msg["video_note"]["file_id"]
         file = requests.get(f"{API}/getFile?file_id={file_id}").json()
 
@@ -124,7 +136,6 @@ def webhook():
     # ---------------- TIKTOK ----------------
 
     elif is_tiktok(text):
-        send_message(chat_id, "⏳ TikTok...")
 
         result = download_tiktok(text)
 
@@ -132,29 +143,21 @@ def webhook():
             send_message(chat_id, "❌ Ошибка TikTok")
             return "ok"
 
-        # 1. VIDEO
         if result.get("video"):
-            send_message(chat_id, "🎬 Видео")
             send_video(chat_id, result["video"])
 
-        # 2. MUSIC
         if result.get("music"):
-            send_message(chat_id, "🎵 Звук")
             send_audio(chat_id, result["music"])
 
-        # 3. IMAGES
         if result.get("images"):
-            send_message(chat_id, "🖼 Фото")
             send_photos(chat_id, result["images"])
 
-        # 4. DESCRIPTION
         if result.get("title"):
-            send_message(chat_id, f"📌 {result['title']}")
+            send_message(chat_id, result["title"])
 
     # ---------------- YOUTUBE ----------------
 
     elif is_youtube(text):
-        send_message(chat_id, "📺 YouTube:")
         send_message(chat_id, get_youtube_link(text))
 
     return "ok"
