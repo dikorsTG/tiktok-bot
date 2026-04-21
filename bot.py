@@ -1,6 +1,5 @@
 import os
 import requests
-import tempfile
 from flask import Flask, request
 
 TOKEN = os.getenv("TOKEN")
@@ -27,6 +26,13 @@ def send_video(chat_id, url):
     })
 
 
+def send_audio(chat_id, url):
+    requests.post(API + "/sendAudio", json={
+        "chat_id": chat_id,
+        "audio": url
+    })
+
+
 def send_photos(chat_id, images):
     media = [{"type": "photo", "media": img} for img in images[:10]]
     requests.post(API + "/sendMediaGroup", json={
@@ -45,7 +51,7 @@ def is_youtube(url):
     return "youtube.com" in url or "youtu.be" in url
 
 
-# ---------------- TIKTOK (СТАБИЛЬНЫЙ) ----------------
+# ---------------- TIKTOK ----------------
 
 def download_tiktok(url):
     try:
@@ -53,21 +59,21 @@ def download_tiktok(url):
         r = requests.get(api, timeout=10).json()
         data = r.get("data", {})
 
-        if data.get("play"):
-            return ("video", data["play"])
+        return {
+            "video": data.get("play"),
+            "images": data.get("images"),
+            "music": data.get("music"),
+            "title": data.get("title")
+        }
 
-        if data.get("images"):
-            return ("images", data["images"])
-
-        return None
     except:
         return None
 
 
-# ---------------- YOUTUBE (БЕЗ СКАЧИВАНИЯ — СТАБИЛЬНО) ----------------
+# ---------------- YOUTUBE ----------------
 
 def get_youtube_link(url):
-    return url  # просто отдаём ссылку (самый стабильный вариант)
+    return url  # стабильный вариант
 
 
 # ---------------- WEBHOOK ----------------
@@ -91,10 +97,11 @@ def webhook():
     # ---------------- KRUZHKI ----------------
 
     if "video_note" in msg:
-        send_message(chat_id, "🎬 Кружок получен (пересылаю)")
-        file_id = msg["video_note"]["file_id"]
+        send_message(chat_id, "🎬 Кружок получен")
 
+        file_id = msg["video_note"]["file_id"]
         file = requests.get(f"{API}/getFile?file_id={file_id}").json()
+
         path = file["result"]["file_path"]
         url = f"https://api.telegram.org/file/bot{TOKEN}/{path}"
 
@@ -108,10 +115,10 @@ def webhook():
 
     elif text == "/help":
         send_message(chat_id,
-            "🤖 Бот:\n\n"
-            "📥 TikTok\n"
-            "📺 YouTube (отправка ссылки)\n"
-            "🎬 кружки"
+            "🤖 Бот умеет:\n\n"
+            "📥 TikTok (видео / фото / звук)\n"
+            "📺 YouTube (ссылка)\n"
+            "🎬 кружки → видео"
         )
 
     # ---------------- TIKTOK ----------------
@@ -123,17 +130,31 @@ def webhook():
 
         if not result:
             send_message(chat_id, "❌ Ошибка TikTok")
+            return "ok"
 
-        elif result[0] == "video":
-            send_video(chat_id, result[1])
+        # 1. VIDEO
+        if result.get("video"):
+            send_message(chat_id, "🎬 Видео")
+            send_video(chat_id, result["video"])
 
-        elif result[0] == "images":
-            send_photos(chat_id, result[1])
+        # 2. MUSIC
+        if result.get("music"):
+            send_message(chat_id, "🎵 Звук")
+            send_audio(chat_id, result["music"])
+
+        # 3. IMAGES
+        if result.get("images"):
+            send_message(chat_id, "🖼 Фото")
+            send_photos(chat_id, result["images"])
+
+        # 4. DESCRIPTION
+        if result.get("title"):
+            send_message(chat_id, f"📌 {result['title']}")
 
     # ---------------- YOUTUBE ----------------
 
     elif is_youtube(text):
-        send_message(chat_id, "📺 YouTube ссылка:")
+        send_message(chat_id, "📺 YouTube:")
         send_message(chat_id, get_youtube_link(text))
 
     return "ok"
