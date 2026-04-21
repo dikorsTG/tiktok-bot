@@ -1,24 +1,18 @@
 import os
 import requests
 import yt_dlp
+import tempfile
 from flask import Flask, request
 
 TOKEN = os.getenv("TOKEN")
-
-print("BOT STARTING...")
-
-if not TOKEN:
-    print("❌ TOKEN is missing")
-    exit()
-
 API = f"https://api.telegram.org/bot{TOKEN}"
 
 app = Flask(__name__)
 
 WEBHOOK_URL = "https://tiktok-bot-1-3atx.onrender.com/webhook"
-SECRET = "1234"  # ✅ теперь используем
 
-# ---------------- HELPERS ----------------
+
+# ---------------- SEND ----------------
 
 def send_message(chat_id, text):
     requests.post(API + "/sendMessage", json={
@@ -27,16 +21,22 @@ def send_message(chat_id, text):
     })
 
 
-def send_video(chat_id, url):
-    requests.post(API + "/sendVideo", json={
-        "chat_id": chat_id,
-        "video": url
-    })
+def send_video(chat_id, file):
+    if isinstance(file, str) and file.startswith("http"):
+        requests.post(API + "/sendVideo", json={
+            "chat_id": chat_id,
+            "video": file
+        })
+    else:
+        with open(file, "rb") as f:
+            requests.post(API + "/sendVideo",
+                data={"chat_id": chat_id},
+                files={"video": f}
+            )
 
 
 def send_photos(chat_id, images):
     media = [{"type": "photo", "media": img} for img in images[:10]]
-
     requests.post(API + "/sendMediaGroup", json={
         "chat_id": chat_id,
         "media": media
@@ -59,62 +59,46 @@ def download_tiktok(url):
     try:
         api = f"https://tikwm.com/api/?url={url}"
         r = requests.get(api, timeout=10).json()
-
         data = r.get("data", {})
 
         if data.get("play"):
-            return {"type": "video", "url": data["play"]}
+            return ("video", data["play"])
 
         if data.get("images"):
-            return {"type": "images", "urls": data["images"]}
+            return ("images", data["images"])
 
         return None
-
-    except Exception as e:
-        print("TIKTOK ERROR:", e)
+    except:
         return None
 
 
-# ---------------- YOUTUBE ----------------
+# ---------------- YOUTUBE (ФАЙЛ) ----------------
 
 def download_youtube(url):
     try:
+        temp_dir = tempfile.mkdtemp()
+        output = os.path.join(temp_dir, "video.mp4")
+
         ydl_opts = {
             "format": "mp4[height<=720]/best",
+            "outtmpl": output,
             "quiet": True
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = ydl.extract_info(url, download=True)
 
-            duration = info.get("duration", 0)
+            if info.get("duration", 0) > 600:
+                return "PRO"
 
-            if duration > 600:
-                return "PRO_ONLY"
-
-            for f in info["formats"][::-1]:
-                if f.get("ext") == "mp4" and f.get("url"):
-                    return f["url"]
-
-            return None
+        return output
 
     except Exception as e:
         print("YT ERROR:", e)
         return None
 
 
-# ---------------- VIDEO NOTE ----------------
-
-def convert_video_note(chat_id, file_id):
-    r = requests.get(f"{API}/getFile?file_id={file_id}").json()
-    file_path = r["result"]["file_path"]
-
-    file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
-
-    send_video(chat_id, file_url)
-
-
-# ---------------- ROUTES ----------------
+# ---------------- WEBHOOK ----------------
 
 @app.route("/")
 def home():
@@ -124,30 +108,13 @@ def home():
 @app.route("/webhook", methods=["POST"])
 def webhook():
 
-    # ✅ ПРОВЕРКА SECRET (теперь работает)
-    if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != SECRET:
-        print("❌ WRONG SECRET")
-        return "forbidden", 403
-
     data = request.get_json()
-    print("INCOMING:", data)
-
     if not data or "message" not in data:
         return "ok"
 
     msg = data["message"]
     chat_id = msg["chat"]["id"]
-
-    # 🎬 кружок → видео
-    if "video_note" in msg:
-        file_id = msg["video_note"]["file_id"]
-        send_message(chat_id, "🎬 Конвертирую кружок...")
-        convert_video_note(chat_id, file_id)
-        return "ok"
-
-    text = msg.get("text")
-    if not text:
-        return "ok"
+    text = msg.get("text", "")
 
     # ---------------- COMMANDS ----------------
 
@@ -156,64 +123,54 @@ def webhook():
 
     elif text == "/help":
         send_message(chat_id,
-            "🤖 Бот умеет:\n\n"
+            "🤖 Бот:\n\n"
             "📥 TikTok (видео + фото)\n"
-            "📺 YouTube (до 10 минут)\n"
-            "🎬 кружки → видео\n"
+            "📺 YouTube (до 10 мин)\n"
+            "🎬 кружки → видео"
         )
 
     # ---------------- TIKTOK ----------------
 
     elif is_tiktok(text):
-        send_message(chat_id, "⏳ TikTok загрузка...")
+        send_message(chat_id, "⏳ TikTok...")
 
         result = download_tiktok(text)
 
         if not result:
             send_message(chat_id, "❌ Ошибка TikTok")
 
-        elif result["type"] == "video":
-            send_video(chat_id, result["url"])
+        elif result[0] == "video":
+            send_video(chat_id, result[1])
 
-        elif result["type"] == "images":
-            send_message(chat_id, "🖼 Отправляю фото...")
-            send_photos(chat_id, result["urls"])
+        elif result[0] == "images":
+            send_message(chat_id, "🖼 фото...")
+            send_photos(chat_id, result[1])
 
     # ---------------- YOUTUBE ----------------
 
     elif is_youtube(text):
-        send_message(chat_id, "⏳ YouTube загрузка...")
+        send_message(chat_id, "⏳ YouTube скачивание...")
 
-        video = download_youtube(text)
+        file_path = download_youtube(text)
 
-        if video == "PRO_ONLY":
-            send_message(chat_id, "🚫 Видео длиннее 10 минут — только PRO")
-        elif video:
-            send_video(chat_id, video)
+        if file_path == "PRO":
+            send_message(chat_id, "🚫 Видео >10 минут (PRO)")
+        elif file_path:
+            send_video(chat_id, file_path)
         else:
             send_message(chat_id, "❌ Ошибка YouTube")
 
     return "ok"
 
 
-# ---------------- WEBHOOK ----------------
-
-def set_webhook():
-    print("SETTING WEBHOOK...")
-    requests.get(f"{API}/deleteWebhook?drop_pending_updates=true")
-    requests.get(
-        f"{API}/setWebhook?url={WEBHOOK_URL}&secret_token={SECRET}"
-    )
-    print("WEBHOOK SET")
-
-
 # ---------------- START ----------------
 
 if __name__ == "__main__":
     import time
-
     time.sleep(2)
-    set_webhook()
+
+    requests.get(f"{API}/deleteWebhook")
+    requests.get(f"{API}/setWebhook?url={WEBHOOK_URL}")
 
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
