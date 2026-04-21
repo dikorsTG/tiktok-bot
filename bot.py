@@ -1,6 +1,5 @@
 import os
 import requests
-import yt_dlp
 import tempfile
 from flask import Flask, request
 
@@ -21,15 +20,11 @@ def send_message(chat_id, text):
     })
 
 
-def send_video(chat_id, file):
-    try:
-        with open(file, "rb") as f:
-            requests.post(API + "/sendVideo",
-                data={"chat_id": chat_id},
-                files={"video": f}
-            )
-    except Exception as e:
-        print("SEND VIDEO ERROR:", e)
+def send_video(chat_id, url):
+    requests.post(API + "/sendVideo", json={
+        "chat_id": chat_id,
+        "video": url
+    })
 
 
 def send_photos(chat_id, images):
@@ -50,7 +45,7 @@ def is_youtube(url):
     return "youtube.com" in url or "youtu.be" in url
 
 
-# ---------------- TIKTOK ----------------
+# ---------------- TIKTOK (СТАБИЛЬНЫЙ) ----------------
 
 def download_tiktok(url):
     try:
@@ -69,34 +64,10 @@ def download_tiktok(url):
         return None
 
 
-# ---------------- YOUTUBE (FIXED) ----------------
+# ---------------- YOUTUBE (БЕЗ СКАЧИВАНИЯ — СТАБИЛЬНО) ----------------
 
-def download_youtube(url):
-    try:
-        temp_dir = tempfile.mkdtemp()
-        output = os.path.join(temp_dir, "video.mp4")
-
-        ydl_opts = {
-            "format": "best[ext=mp4]/best",
-            "outtmpl": output,
-            "quiet": True,
-            "noplaylist": True
-        }
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-
-            if info.get("duration", 0) > 600:
-                return "PRO"
-
-        if os.path.exists(output) and os.path.getsize(output) > 0:
-            return output
-
-        return None
-
-    except Exception as e:
-        print("YT ERROR:", e)
-        return None
+def get_youtube_link(url):
+    return url  # просто отдаём ссылку (самый стабильный вариант)
 
 
 # ---------------- WEBHOOK ----------------
@@ -117,6 +88,19 @@ def webhook():
     chat_id = msg["chat"]["id"]
     text = msg.get("text", "")
 
+    # ---------------- KRUZHKI ----------------
+
+    if "video_note" in msg:
+        send_message(chat_id, "🎬 Кружок получен (пересылаю)")
+        file_id = msg["video_note"]["file_id"]
+
+        file = requests.get(f"{API}/getFile?file_id={file_id}").json()
+        path = file["result"]["file_path"]
+        url = f"https://api.telegram.org/file/bot{TOKEN}/{path}"
+
+        send_video(chat_id, url)
+        return "ok"
+
     # ---------------- COMMANDS ----------------
 
     if text == "/start":
@@ -124,9 +108,10 @@ def webhook():
 
     elif text == "/help":
         send_message(chat_id,
-            "🤖 Бот умеет:\n\n"
-            "📥 TikTok (видео + фото)\n"
-            "📺 YouTube (до 10 минут)\n"
+            "🤖 Бот:\n\n"
+            "📥 TikTok\n"
+            "📺 YouTube (отправка ссылки)\n"
+            "🎬 кружки"
         )
 
     # ---------------- TIKTOK ----------------
@@ -143,22 +128,13 @@ def webhook():
             send_video(chat_id, result[1])
 
         elif result[0] == "images":
-            send_message(chat_id, "🖼 фото...")
             send_photos(chat_id, result[1])
 
     # ---------------- YOUTUBE ----------------
 
     elif is_youtube(text):
-        send_message(chat_id, "⏳ YouTube скачивание...")
-
-        file_path = download_youtube(text)
-
-        if file_path == "PRO":
-            send_message(chat_id, "🚫 Видео >10 минут (PRO)")
-        elif file_path:
-            send_video(chat_id, file_path)
-        else:
-            send_message(chat_id, "❌ Ошибка YouTube")
+        send_message(chat_id, "📺 YouTube ссылка:")
+        send_message(chat_id, get_youtube_link(text))
 
     return "ok"
 
@@ -172,5 +148,4 @@ if __name__ == "__main__":
     requests.get(f"{API}/deleteWebhook")
     requests.get(f"{API}/setWebhook?url={WEBHOOK_URL}")
 
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
